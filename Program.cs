@@ -22,7 +22,7 @@ builder.Services.AddAuthentication(options =>
     options.Cookie.HttpOnly = true;            // inaccessible au JS (anti-XSS)
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.SessionStore = new MemoryTicketStore();  // tokens stockés côté serveur
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(30); // session courte
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(10); // session courte (10 min)
     options.SlidingExpiration = false;                 // expiration FERME (pas prolongée)
 })
 .AddOpenIdConnect(options =>
