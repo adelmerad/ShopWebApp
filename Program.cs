@@ -22,6 +22,8 @@ builder.Services.AddAuthentication(options =>
     options.Cookie.HttpOnly = true;            // inaccessible au JS (anti-XSS)
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.SessionStore = new MemoryTicketStore();  // tokens stockés côté serveur
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30); // session courte
+    options.SlidingExpiration = false;                 // expiration FERME (pas prolongée)
 })
 .AddOpenIdConnect(options =>
 {
@@ -30,6 +32,7 @@ builder.Services.AddAuthentication(options =>
     options.RequireHttpsMetadata = false;      // dev : authority en http
     options.ResponseType = "code";             // Authorization Code
     options.ResponseMode = "query";            // code renvoyé en ?code= (au lieu de form_post)
+    options.Prompt = "login";                  // force la page de login à chaque connexion
     options.UsePkce = true;                     // PKCE
     options.SaveTokens = true;                   // stocke les tokens CÔTÉ SERVEUR (dans le cookie)
     options.GetClaimsFromUserInfoEndpoint = false;
