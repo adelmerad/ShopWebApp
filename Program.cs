@@ -48,9 +48,29 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters.NameClaimType = "name";
     options.TokenValidationParameters.RoleClaimType = "role";
 
-    // Cookies de corrélation/nonce en Lax : indispensable en HTTP (dev)
+    // Cookies de corrélation/nonce en Lax + non-Secure : indispensable en HTTP (dev).
+    // Sans ça, le navigateur les rejette dès qu'on n'est plus sur "localhost"
+    // (seul localhost bénéficie d'une exception "origine sûre" sans HTTPS).
     options.NonceCookie.SameSite = SameSiteMode.Lax;
+    options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.CorrelationCookie.SameSite = SameSiteMode.Lax;
+    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+
+    // ShopWebApp parle à ShopAuth en localhost côté serveur (cf. AUTH ci-dessus) :
+    // ça reste inchangé, c'est un appel machine-à-machine. Mais ICI on redirige
+    // le NAVIGATEUR : il doit atterrir sur l'adresse par laquelle il a lui-même
+    // atteint ShopWebApp (localhost si on est sur ce PC, IP LAN si on vient d'un
+    // autre PC) pour pouvoir la joindre.
+    options.Events = new OpenIdConnectEvents
+    {
+        OnRedirectToIdentityProvider = context =>
+        {
+            var browserHost = context.Request.Host.Host; // "localhost" ou "192.168.100.9"
+            context.ProtocolMessage.IssuerAddress =
+                context.ProtocolMessage.IssuerAddress.Replace("localhost", browserHost);
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization();
