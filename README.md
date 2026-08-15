@@ -1,16 +1,16 @@
-# WebApp — BFF (Backend-For-Frontend)
+# ShopWebApp — BFF (Backend-For-Frontend)
 
 Client web du projet SSO réalisé pendant mon stage chez Mobilis. C'est le **BFF** : il gère la connexion, sert la page, **garde les tokens côté serveur** et n'expose au navigateur qu'un **cookie HttpOnly**. Le navigateur ne voit jamais de token (protection anti-XSS).
 
 ## Rôle dans l'architecture
 
 ```
-Navigateur ──cookie──▶  WebApp (BFF, :5200)  ──token──▶  ShopApi (:5050)  ──valide via──▶  AuthApiTest (:5124)
+Navigateur ──cookie──▶  ShopWebApp (BFF, :5200)  ──token──▶  ShopApi (:5050)  ──valide via──▶  ShopAuth (:5124)
 ```
 
-- **Navigateur ↔ WebApp** : cookie de session **HttpOnly**.
-- **WebApp ↔ ShopApi** : appel serveur-à-serveur avec `Authorization: Bearer <token>`.
-- **WebApp ↔ AuthApiTest** : login OpenID Connect (Authorization Code + PKCE).
+- **Navigateur ↔ ShopWebApp** : cookie de session **HttpOnly**.
+- **ShopWebApp ↔ ShopApi** : appel serveur-à-serveur avec `Authorization: Bearer <token>`.
+- **ShopWebApp ↔ ShopAuth** : login OpenID Connect (Authorization Code + PKCE).
 
 ## Stack
 
@@ -21,15 +21,15 @@ Navigateur ──cookie──▶  WebApp (BFF, :5200)  ──token──▶  Sho
 
 ## Comment ça marche
 
-1. **Login** : `GET /auth/login` → redirige vers la page de login d'AuthApiTest → retour avec un `code` → **échange côté serveur** (PKCE) → pose le cookie de session.
+1. **Login** : `GET /auth/login` → redirige vers la page de login de ShopAuth → retour avec un `code` → **échange côté serveur** (PKCE) → pose le cookie de session.
 2. **Tokens** : stockés **côté serveur** (`MemoryTicketStore`), jamais dans le navigateur. Le cookie ne contient qu'un identifiant de session.
 3. **Proxy** : `/api/*` est relayé vers ShopApi en **injectant le Bearer** côté serveur.
 
 ## Prérequis
 
-- **AuthApiTest** lancé sur `http://localhost:5124` (profil **http**)
+- **ShopAuth** lancé sur `http://localhost:5124` (profil **http**)
 - **ShopApi** lancé sur `http://localhost:5050`
-- Le client `postman` d'AuthApiTest doit autoriser le redirect **`http://localhost:5200/signin-oidc`**
+- Le client `postman` de ShopAuth doit autoriser le redirect **`http://localhost:5200/signin-oidc`**
 
 ## Lancer
 

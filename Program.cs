@@ -18,7 +18,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddCookie(options =>
 {
-    options.Cookie.Name = "WebApp.Session";
+    options.Cookie.Name = "ShopWebApp.Session";
     options.Cookie.HttpOnly = true;            // inaccessible au JS (anti-XSS)
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.SessionStore = new MemoryTicketStore();  // tokens stockés côté serveur
