@@ -143,5 +143,6 @@ app.MapGet("/api/products", (HttpContext c, IHttpClientFactory f) => ProxyAsync(
 app.MapGet("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Get, "/api/categories", requireAuth: false));
 app.MapPost("/api/products", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/products", requireAuth: true));
 app.MapPost("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/categories", requireAuth: true));
+app.MapDelete("/api/products/{id}", (int id, HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Delete, $"/api/products/{id}", requireAuth: true));
 
 app.Run();

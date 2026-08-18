@@ -47,8 +47,8 @@ static class Front
   <div class="card">
     <h2>Produits</h2>
     <table>
-      <thead><tr><th>Id</th><th>Nom</th><th>Prix</th><th>Catégorie</th></tr></thead>
-      <tbody id="productsBody"><tr><td colspan="4" class="locked">Chargement…</td></tr></tbody>
+      <thead><tr><th>Id</th><th>Nom</th><th>Prix</th><th>Catégorie</th><th></th></tr></thead>
+      <tbody id="productsBody"><tr><td colspan="5" class="locked">Chargement…</td></tr></tbody>
     </table>
   </div>
 
@@ -94,7 +94,13 @@ async function renderAuth(){
 async function loadProducts(){
   const r=await fetch("/api/products");const list=await r.json();
   const b=document.getElementById("productsBody");
-  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td></tr>`).join(""):`<tr><td colspan="4" class="locked">Aucun produit.</td></tr>`;
+  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td><td><button class="ghost" onclick="deleteProduct(${p.id})">Supprimer</button></td></tr>`).join(""):`<tr><td colspan="5" class="locked">Aucun produit.</td></tr>`;
+}
+async function deleteProduct(id){
+  const r=await fetch("/api/products/"+id,{method:"DELETE"});
+  if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.ok||r.status===204){show("Produit supprimé ✓",true);loadProducts();}
+  else show("Erreur ("+r.status+")",false);
 }
 async function loadCategories(){
   const r=await fetch("/api/categories");const list=await r.json();
