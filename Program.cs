@@ -127,7 +127,7 @@ async Task<IResult> ProxyAsync(HttpContext ctx, IHttpClientFactory factory, Http
     if (!string.IsNullOrEmpty(token))
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-    if (method == HttpMethod.Post)
+    if (method == HttpMethod.Post || method == HttpMethod.Put)
     {
         using var reader = new StreamReader(ctx.Request.Body);
         var body = await reader.ReadToEndAsync();
@@ -144,5 +144,6 @@ app.MapGet("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsyn
 app.MapPost("/api/products", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/products", requireAuth: true));
 app.MapPost("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/categories", requireAuth: true));
 app.MapDelete("/api/products/{id}", (int id, HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Delete, $"/api/products/{id}", requireAuth: true));
+app.MapPut("/api/products/{id}", (int id, HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Put, $"/api/products/{id}", requireAuth: true));
 
 app.Run();

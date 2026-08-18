@@ -60,7 +60,8 @@ static class Front
         <div class="field"><label>Nom du produit</label><input id="pName" placeholder="Clavier"></div>
         <div class="field"><label>Prix (€)</label><input id="pPrice" type="number" step="0.01" placeholder="49.90"></div>
         <div class="field"><label>Catégorie</label><select id="pCat"></select></div>
-        <div class="field" style="flex:0;"><label>&nbsp;</label><button onclick="addProduct()">Ajouter</button></div>
+        <div class="field" style="flex:0;"><label>&nbsp;</label><button id="saveBtn" onclick="addProduct()">Ajouter</button></div>
+        <div class="field" id="cancelField" style="flex:0;display:none;"><label>&nbsp;</label><button class="ghost" onclick="cancelEdit()">Annuler</button></div>
       </div>
       <div class="row" style="margin-top:12px;">
         <div class="field"><label>Nouvelle catégorie</label><input id="cName" placeholder="Informatique"></div>
@@ -94,7 +95,23 @@ async function renderAuth(){
 async function loadProducts(){
   const r=await fetch("/api/products");const list=await r.json();
   const b=document.getElementById("productsBody");
-  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td><td><button class="ghost" onclick="deleteProduct(${p.id})">Supprimer</button></td></tr>`).join(""):`<tr><td colspan="5" class="locked">Aucun produit.</td></tr>`;
+  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td><td style="display:flex;gap:6px;"><button class="ghost" onclick='editProduct(${p.id},${JSON.stringify(p.name)},${p.price},${p.categoryId})'>Éditer</button><button class="ghost" onclick="deleteProduct(${p.id})">Supprimer</button></td></tr>`).join(""):`<tr><td colspan="5" class="locked">Aucun produit.</td></tr>`;
+}
+let editingId=null;
+function editProduct(id,name,price,categoryId){
+  editingId=id;
+  document.getElementById("pName").value=name;
+  document.getElementById("pPrice").value=price;
+  document.getElementById("pCat").value=categoryId;
+  document.getElementById("saveBtn").textContent="Mettre à jour";
+  document.getElementById("cancelField").style.display="";
+}
+function cancelEdit(){
+  editingId=null;
+  document.getElementById("pName").value="";
+  document.getElementById("pPrice").value="";
+  document.getElementById("saveBtn").textContent="Ajouter";
+  document.getElementById("cancelField").style.display="none";
 }
 async function deleteProduct(id){
   const r=await fetch("/api/products/"+id,{method:"DELETE"});
@@ -111,10 +128,15 @@ async function addProduct(){
   const price=parseFloat(document.getElementById("pPrice").value);
   const categoryId=parseInt(document.getElementById("pCat").value);
   if(!name||isNaN(price)||isNaN(categoryId)){show("Renseigne nom, prix et catégorie.",false);return;}
-  const r=await fetch("/api/products",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,price,categoryId})});
+  const editing=editingId!==null;
+  const url=editing?"/api/products/"+editingId:"/api/products";
+  const r=await fetch(url,{method:editing?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,price,categoryId})});
   if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
-  if(r.ok){show("Produit ajouté ✓",true);document.getElementById("pName").value="";document.getElementById("pPrice").value="";loadProducts();}
-  else show("Erreur ("+r.status+")",false);
+  if(r.ok){
+    show(editing?"Produit mis à jour ✓":"Produit ajouté ✓",true);
+    if(editing)cancelEdit();else{document.getElementById("pName").value="";document.getElementById("pPrice").value="";}
+    loadProducts();
+  }else show("Erreur ("+r.status+")",false);
 }
 async function addCategory(){
   const name=document.getElementById("cName").value.trim();
