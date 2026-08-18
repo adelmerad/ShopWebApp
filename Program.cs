@@ -7,10 +7,16 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Adresse du serveur d'auth : configurable via appsettings.json (clé "Sso:Authority"),
-// PAS écrite en dur dans le code — elle change selon le réseau/qui on teste
-// (notre ShopAuth, ou le SSO du binôme). Voir appsettings.Example.json.
+// Tout ce bloc est configurable via appsettings.json (section "Sso"), PAS écrit
+// en dur — ça change selon qui on teste (notre ShopAuth, ou le SSO du binôme).
+// Les valeurs par défaut ci-dessous correspondent à NOTRE ShopAuth (nouveau
+// client confidentiel "shopwebapp-bff"). Voir appsettings.Example.json.
 string AUTH = builder.Configuration["Sso:Authority"] ?? "http://localhost:5124";
+string CLIENT_ID = builder.Configuration["Sso:ClientId"] ?? "shopwebapp-bff";
+string CLIENT_SECRET = builder.Configuration["Sso:ClientSecret"] ?? "shopwebapp-secret-dev-only";
+string? CALLBACK_PATH = builder.Configuration["Sso:CallbackPath"]; // null -> défaut ASP.NET Core (/signin-oidc)
+string[] SSO_SCOPES = builder.Configuration.GetSection("Sso:Scopes").Get<string[]>()
+    ?? new[] { "openid", "email", "profile", "offline_access", "shop_api" };
 const string SHOP = "http://localhost:5050";   // API ressource (ShopApi, même machine)
 
 // --- Authentification : cookie pour le navigateur, OIDC pour parler au serveur d'auth ---
@@ -31,9 +37,10 @@ builder.Services.AddAuthentication(options =>
 .AddOpenIdConnect(options =>
 {
     options.Authority = AUTH;                   // découverte OIDC + JWKS récupérés ici
-    options.ClientId = "mon-app-cliente-adel"; // client enregistré par le binôme pour toi
-    options.ClientSecret = "secret-de-test-123"; // client CONFIDENTIEL (pas public comme "postman") + PKCE quand même
-    options.CallbackPath = "/auth/callback";   // le binôme a enregistré ce chemin, pas /signin-oidc (le défaut ASP.NET Core)
+    options.ClientId = CLIENT_ID;
+    options.ClientSecret = CLIENT_SECRET;      // client CONFIDENTIEL (pas public comme "postman") + PKCE quand même
+    if (!string.IsNullOrEmpty(CALLBACK_PATH))
+        options.CallbackPath = CALLBACK_PATH;  // le binôme utilise /auth/callback ; par défaut /signin-oidc
     options.RequireHttpsMetadata = false;      // dev : authority en http
     options.ResponseType = "code";             // Authorization Code
     options.ResponseMode = "query";            // code renvoyé en ?code= (au lieu de form_post)
@@ -43,12 +50,8 @@ builder.Services.AddAuthentication(options =>
     options.GetClaimsFromUserInfoEndpoint = false;
 
     options.Scope.Clear();
-    options.Scope.Add("openid");
-    options.Scope.Add("email");
-    options.Scope.Add("profile");
-    options.Scope.Add("offline_access");
-    // Pas de "shop_api" ici : ce scope n'existe pas sur le serveur du binôme,
-    // ces tokens ne donneront pas accès à ShopApi.
+    foreach (var scope in SSO_SCOPES)
+        options.Scope.Add(scope);
 
     options.MapInboundClaims = false;
     options.TokenValidationParameters.NameClaimType = "name";
