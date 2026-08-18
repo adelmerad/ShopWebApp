@@ -79,10 +79,12 @@ function show(m,ok){const e=document.getElementById("msg");e.textContent=m;e.cla
 function login(){location="/auth/login";}
 async function logout(){await fetch("/auth/logout",{method:"POST"});location.reload();}
 
+let isAuthenticated=false;
 async function renderAuth(){
   const a=document.getElementById("authArea");
   const form=document.getElementById("addForm"),lock=document.getElementById("addLocked");
   const r=await fetch("/auth/me");
+  isAuthenticated=r.ok;
   if(r.ok){
     const u=await r.json();
     a.innerHTML=`<span class="badge on">● ${u.email||u.name}</span><button class="ghost" onclick="logout()">Déconnexion</button>`;
@@ -95,7 +97,10 @@ async function renderAuth(){
 async function loadProducts(){
   const r=await fetch("/api/products");const list=await r.json();
   const b=document.getElementById("productsBody");
-  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td><td style="display:flex;gap:6px;"><button class="ghost" onclick='editProduct(${p.id},${JSON.stringify(p.name)},${p.price},${p.categoryId})'>Éditer</button><button class="ghost" onclick="deleteProduct(${p.id})">Supprimer</button></td></tr>`).join(""):`<tr><td colspan="5" class="locked">Aucun produit.</td></tr>`;
+  const actions=p=>isAuthenticated
+    ?`<button class="ghost" onclick='editProduct(${p.id},${JSON.stringify(p.name)},${p.price},${p.categoryId})'>Éditer</button><button class="ghost" onclick="deleteProduct(${p.id})">Supprimer</button>`
+    :`<span class="locked">🔒 Connecte-toi</span>`;
+  b.innerHTML=Array.isArray(list)&&list.length?list.map(p=>`<tr><td>${p.id}</td><td>${p.name}</td><td>${p.price} €</td><td>${p.category?p.category.name:p.categoryId}</td><td style="display:flex;gap:6px;align-items:center;">${actions(p)}</td></tr>`).join(""):`<tr><td colspan="5" class="locked">Aucun produit.</td></tr>`;
 }
 let editingId=null;
 function editProduct(id,name,price,categoryId){
