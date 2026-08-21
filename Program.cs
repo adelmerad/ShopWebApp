@@ -1,11 +1,10 @@
-using System.Net.Http.Headers;
-using System.Text;
-using ShopWebApp.Endpoints;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
+using ShopWebApp.Data;
+using ShopWebApp.Endpoints;
+using ShopWebApp.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
-
-const string SHOP = "http://localhost:5050";   // API ressource (ShopApi, même machine)
 
 // --- Authentification : cookie simple, échange OIDC fait à la main (AuthEndpoints.cs) ---
 // Même méthode que ClientApi (le BFF du binôme) : PKCE manuel, pas de middleware
@@ -34,6 +33,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddHttpClient();
 
+// Produits/catégories fusionnés directement dans ShopWebApp (ShopApi retiré) :
+// même application pour tout, comme ClientApi chez le binôme.
+builder.Services.AddDbContext<ShopDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 var app = builder.Build();
 
 app.UseAuthentication();
@@ -44,37 +48,55 @@ app.MapGet("/", () => Results.Content(Front.Html, "text/html"));
 
 app.MapAuthEndpoints();
 
-// ---------- Proxy vers ShopApi : le BFF ajoute le Bearer (token jamais exposé au navigateur) ----------
-async Task<IResult> ProxyAsync(HttpContext ctx, IHttpClientFactory factory, HttpMethod method, string path, bool requireAuth)
+// ---------- Produits / catégories : accès direct à la base, plus de proxy vers une API séparée ----------
+app.MapGet("/api/categories", async (ShopDbContext db) =>
+    await db.Categories.ToListAsync());
+
+app.MapPost("/api/categories", async (Category category, ShopDbContext db) =>
 {
-    if (requireAuth && ctx.User.Identity?.IsAuthenticated != true)
-        return Results.Unauthorized();
+    db.Categories.Add(category);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/categories/{category.Id}", category);
+}).RequireAuthorization();
 
-    var request = new HttpRequestMessage(method, SHOP + path);
+app.MapGet("/api/products", async (ShopDbContext db) =>
+    await db.Products.Include(p => p.Category).ToListAsync());
 
-    // Le token est stocké comme claim dans le cookie (cf. AuthEndpoints.cs), pas
-    // via un ticket store séparé — même méthode que ClientApi.
-    var token = ctx.User.FindFirst("access_token")?.Value;
-    if (!string.IsNullOrEmpty(token))
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+app.MapGet("/api/products/{id}", async (int id, ShopDbContext db) =>
+{
+    var product = await db.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
+    return product is not null ? Results.Ok(product) : Results.NotFound();
+});
 
-    if (method == HttpMethod.Post || method == HttpMethod.Put)
-    {
-        using var reader = new StreamReader(ctx.Request.Body);
-        var body = await reader.ReadToEndAsync();
-        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-    }
+app.MapPost("/api/products", async (Product product, ShopDbContext db) =>
+{
+    db.Products.Add(product);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/products/{product.Id}", product);
+}).RequireAuthorization();
 
-    var response = await factory.CreateClient().SendAsync(request);
-    var content = await response.Content.ReadAsStringAsync();
-    return Results.Text(content, "application/json", Encoding.UTF8, (int)response.StatusCode);
-}
+app.MapPut("/api/products/{id}", async (int id, Product updated, ShopDbContext db) =>
+{
+    var product = await db.Products.FindAsync(id);
+    if (product is null)
+        return Results.NotFound();
 
-app.MapGet("/api/products", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Get, "/api/products", requireAuth: false));
-app.MapGet("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Get, "/api/categories", requireAuth: false));
-app.MapPost("/api/products", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/products", requireAuth: true));
-app.MapPost("/api/categories", (HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Post, "/api/categories", requireAuth: true));
-app.MapDelete("/api/products/{id}", (int id, HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Delete, $"/api/products/{id}", requireAuth: true));
-app.MapPut("/api/products/{id}", (int id, HttpContext c, IHttpClientFactory f) => ProxyAsync(c, f, HttpMethod.Put, $"/api/products/{id}", requireAuth: true));
+    product.Name = updated.Name;
+    product.Price = updated.Price;
+    product.categoryId = updated.categoryId;
+    await db.SaveChangesAsync();
+    return Results.Ok(product);
+}).RequireAuthorization();
+
+app.MapDelete("/api/products/{id}", async (int id, ShopDbContext db) =>
+{
+    var product = await db.Products.FindAsync(id);
+    if (product is null)
+        return Results.NotFound();
+
+    db.Products.Remove(product);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+}).RequireAuthorization();
 
 app.Run();

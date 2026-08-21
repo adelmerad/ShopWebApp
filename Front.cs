@@ -40,7 +40,7 @@ static class Front
 </head>
 <body>
 <header>
-  <div><h1>🛍️ Boutique — via BFF</h1><div class="sub">Navigateur → <b>cookie</b> → ShopWebApp (BFF) → <b>token</b> → ShopApi</div></div>
+  <div><h1>🛍️ Boutique</h1><div class="sub">Navigateur → <b>cookie</b> → ShopWebApp (auth + données)</div></div>
   <div class="auth" id="authArea"></div>
 </header>
 <main>
