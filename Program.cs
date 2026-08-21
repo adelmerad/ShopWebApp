@@ -59,6 +59,17 @@ app.MapPost("/api/categories", async (Category category, ShopDbContext db) =>
     return Results.Created($"/api/categories/{category.Id}", category);
 }).RequireAuthorization();
 
+app.MapDelete("/api/categories/{id}", async (int id, ShopDbContext db) =>
+{
+    var category = await db.Categories.FindAsync(id);
+    if (category is null)
+        return Results.NotFound();
+
+    db.Categories.Remove(category);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+}).RequireAuthorization();
+
 app.MapGet("/api/products", async (ShopDbContext db) =>
     await db.Products.Include(p => p.Category).ToListAsync());
 

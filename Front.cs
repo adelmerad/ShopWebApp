@@ -53,6 +53,14 @@ static class Front
   </div>
 
   <div class="card">
+    <h2>Catégories</h2>
+    <table>
+      <thead><tr><th>Id</th><th>Nom</th><th></th></tr></thead>
+      <tbody id="categoriesBody"><tr><td colspan="3" class="locked">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
     <h2>Ajouter <span class="badge">🔒 connexion requise</span></h2>
     <div id="addLocked" class="locked">Connecte-toi pour ajouter un produit ou une catégorie.</div>
     <div id="addForm" style="display:none;">
@@ -127,6 +135,16 @@ async function deleteProduct(id){
 async function loadCategories(){
   const r=await fetch("/api/categories");const list=await r.json();
   document.getElementById("pCat").innerHTML=Array.isArray(list)&&list.length?list.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""):`<option value="">(crée une catégorie)</option>`;
+  const b=document.getElementById("categoriesBody");
+  const actions=c=>isAuthenticated?`<button class="ghost" onclick="deleteCategory(${c.id})">Supprimer</button>`:`<span class="locked">🔒 Connecte-toi</span>`;
+  b.innerHTML=Array.isArray(list)&&list.length?list.map(c=>`<tr><td>${c.id}</td><td>${c.name}</td><td>${actions(c)}</td></tr>`).join(""):`<tr><td colspan="3" class="locked">Aucune catégorie.</td></tr>`;
+}
+async function deleteCategory(id){
+  if(!confirm("Supprimer cette catégorie ? Les produits liés seront supprimés aussi."))return;
+  const r=await fetch("/api/categories/"+id,{method:"DELETE"});
+  if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.ok||r.status===204){show("Catégorie supprimée ✓",true);loadCategories();loadProducts();}
+  else show("Erreur ("+r.status+")",false);
 }
 async function addProduct(){
   const name=document.getElementById("pName").value.trim();
