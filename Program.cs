@@ -1,86 +1,35 @@
 using System.Net.Http.Headers;
-using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authentication;
+using ShopWebApp.Endpoints;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Tout ce bloc est configurable via appsettings.json (section "Sso"), PAS écrit
-// en dur — ça change selon qui on teste (notre ShopAuth, ou le SSO du binôme).
-// Les valeurs par défaut ci-dessous correspondent à NOTRE ShopAuth (nouveau
-// client confidentiel "shopwebapp-bff"). Voir appsettings.Example.json.
-string AUTH = builder.Configuration["Sso:Authority"] ?? "http://localhost:5124";
-string CLIENT_ID = builder.Configuration["Sso:ClientId"] ?? "shopwebapp-bff";
-string CLIENT_SECRET = builder.Configuration["Sso:ClientSecret"] ?? "shopwebapp-secret-dev-only";
-string? CALLBACK_PATH = builder.Configuration["Sso:CallbackPath"]; // null -> défaut ASP.NET Core (/signin-oidc)
-string[] SSO_SCOPES = builder.Configuration.GetSection("Sso:Scopes").Get<string[]>()
-    ?? new[] { "openid", "email", "profile", "offline_access", "shop_api" };
 const string SHOP = "http://localhost:5050";   // API ressource (ShopApi, même machine)
 
-// --- Authentification : cookie pour le navigateur, OIDC pour parler au serveur d'auth ---
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-})
-.AddCookie(options =>
-{
-    options.Cookie.Name = "ShopWebApp.Session";
-    options.Cookie.HttpOnly = true;            // inaccessible au JS (anti-XSS)
-    options.Cookie.SameSite = SameSiteMode.Lax;
-    options.SessionStore = new MemoryTicketStore();  // tokens stockés côté serveur
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(10); // session courte (10 min)
-    options.SlidingExpiration = false;                 // expiration FERME (pas prolongée)
-})
-.AddOpenIdConnect(options =>
-{
-    options.Authority = AUTH;                   // découverte OIDC + JWKS récupérés ici
-    options.ClientId = CLIENT_ID;
-    options.ClientSecret = CLIENT_SECRET;      // client CONFIDENTIEL (pas public comme "postman") + PKCE quand même
-    if (!string.IsNullOrEmpty(CALLBACK_PATH))
-        options.CallbackPath = CALLBACK_PATH;  // le binôme utilise /auth/callback ; par défaut /signin-oidc
-    options.RequireHttpsMetadata = false;      // dev : authority en http
-    options.ResponseType = "code";             // Authorization Code
-    options.ResponseMode = "query";            // code renvoyé en ?code= (au lieu de form_post)
-    options.Prompt = "login";                  // force la page de login à chaque connexion
-    options.UsePkce = true;                     // PKCE
-    options.SaveTokens = true;                   // stocke les tokens CÔTÉ SERVEUR (dans le cookie)
-    options.GetClaimsFromUserInfoEndpoint = false;
-
-    options.Scope.Clear();
-    foreach (var scope in SSO_SCOPES)
-        options.Scope.Add(scope);
-
-    options.MapInboundClaims = false;
-    options.TokenValidationParameters.NameClaimType = "name";
-    options.TokenValidationParameters.RoleClaimType = "role";
-
-    // Cookies de corrélation/nonce en Lax + non-Secure : indispensable en HTTP (dev).
-    // Sans ça, le navigateur les rejette dès qu'on n'est plus sur "localhost"
-    // (seul localhost bénéficie d'une exception "origine sûre" sans HTTPS).
-    options.NonceCookie.SameSite = SameSiteMode.Lax;
-    options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-    options.CorrelationCookie.SameSite = SameSiteMode.Lax;
-    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-
-    // ShopWebApp parle à ShopAuth en localhost côté serveur (cf. AUTH ci-dessus) :
-    // ça reste inchangé, c'est un appel machine-à-machine. Mais ICI on redirige
-    // le NAVIGATEUR : il doit atterrir sur l'adresse par laquelle il a lui-même
-    // atteint ShopWebApp (localhost si on est sur ce PC, IP LAN si on vient d'un
-    // autre PC) pour pouvoir la joindre.
-    options.Events = new OpenIdConnectEvents
+// --- Authentification : cookie simple, échange OIDC fait à la main (AuthEndpoints.cs) ---
+// Même méthode que ClientApi (le BFF du binôme) : PKCE manuel, pas de middleware
+// AddOpenIdConnect. Voir Endpoints/AuthEndpoints.cs pour le flow complet.
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
     {
-        OnRedirectToIdentityProvider = context =>
+        options.Cookie.Name = "ShopWebApp.Session";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+
+        options.Events.OnRedirectToLogin = context =>
         {
-            var browserHost = context.Request.Host.Host; // "localhost" ou "172.20.10.5"
-            context.ProtocolMessage.IssuerAddress =
-                context.ProtocolMessage.IssuerAddress.Replace("localhost", browserHost);
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
-        }
-    };
-});
+        };
+
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpClient();
@@ -93,26 +42,7 @@ app.UseAuthorization();
 // Page front servie par le BFF (même origine -> pas de CORS, pas de token dans le navigateur)
 app.MapGet("/", () => Results.Content(Front.Html, "text/html"));
 
-// ---------- Auth ----------
-app.MapGet("/auth/login", () =>
-    Results.Challenge(new AuthenticationProperties { RedirectUri = "/" },
-        new[] { OpenIdConnectDefaults.AuthenticationScheme }));
-
-app.MapPost("/auth/logout", async (HttpContext ctx) =>
-{
-    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    return Results.Ok(new { ok = true });
-});
-
-app.MapGet("/auth/me", (ClaimsPrincipal user) =>
-    user.Identity?.IsAuthenticated == true
-        ? Results.Ok(new
-        {
-            name = user.FindFirst("name")?.Value ?? user.FindFirst("email")?.Value,
-            email = user.FindFirst("email")?.Value,
-            sub = user.FindFirst("sub")?.Value
-        })
-        : Results.Unauthorized());  // 401 propre (pas de redirection) pour le fetch JS
+app.MapAuthEndpoints();
 
 // ---------- Proxy vers ShopApi : le BFF ajoute le Bearer (token jamais exposé au navigateur) ----------
 async Task<IResult> ProxyAsync(HttpContext ctx, IHttpClientFactory factory, HttpMethod method, string path, bool requireAuth)
@@ -122,8 +52,9 @@ async Task<IResult> ProxyAsync(HttpContext ctx, IHttpClientFactory factory, Http
 
     var request = new HttpRequestMessage(method, SHOP + path);
 
-    // On récupère le token stocké côté serveur et on l'injecte.
-    var token = await ctx.GetTokenAsync("access_token");
+    // Le token est stocké comme claim dans le cookie (cf. AuthEndpoints.cs), pas
+    // via un ticket store séparé — même méthode que ClientApi.
+    var token = ctx.User.FindFirst("access_token")?.Value;
     if (!string.IsNullOrEmpty(token))
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
