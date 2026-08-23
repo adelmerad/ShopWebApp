@@ -65,7 +65,7 @@ static class Front
     <div id="addLocked" class="locked">Connecte-toi pour ajouter un produit ou une catégorie.</div>
     <div id="addForm" style="display:none;">
       <div class="row">
-        <div class="field"><label>Nom du produit</label><input id="pName" placeholder="Clavier"></div>
+        <div class="field"><label>Nom du produit</label><input id="pName" placeholder="nom de produit"></div>
         <div class="field"><label>Prix (€)</label><input id="pPrice" type="number" step="0.01" placeholder="49.90"></div>
         <div class="field"><label>Catégorie</label><select id="pCat"></select></div>
         <div class="field" style="flex:0;"><label>&nbsp;</label><button id="saveBtn" onclick="addProduct()">Ajouter</button></div>
@@ -129,6 +129,7 @@ function cancelEdit(){
 async function deleteProduct(id){
   const r=await fetch("/api/products/"+id,{method:"DELETE"});
   if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.status===403){show("Réservé aux administrateurs.",false);return;}
   if(r.ok||r.status===204){show("Produit supprimé ✓",true);loadProducts();}
   else show("Erreur ("+r.status+")",false);
 }
@@ -143,6 +144,7 @@ async function deleteCategory(id){
   if(!confirm("Supprimer cette catégorie ? Les produits liés seront supprimés aussi."))return;
   const r=await fetch("/api/categories/"+id,{method:"DELETE"});
   if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.status===403){show("Réservé aux administrateurs.",false);return;}
   if(r.ok||r.status===204){show("Catégorie supprimée ✓",true);loadCategories();loadProducts();}
   else show("Erreur ("+r.status+")",false);
 }
@@ -155,6 +157,7 @@ async function addProduct(){
   const url=editing?"/api/products/"+editingId:"/api/products";
   const r=await fetch(url,{method:editing?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,price,categoryId})});
   if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.status===403){show("Réservé aux administrateurs.",false);return;}
   if(r.ok){
     show(editing?"Produit mis à jour ✓":"Produit ajouté ✓",true);
     if(editing)cancelEdit();else{document.getElementById("pName").value="";document.getElementById("pPrice").value="";}
@@ -166,6 +169,7 @@ async function addCategory(){
   if(!name){show("Nom de catégorie requis.",false);return;}
   const r=await fetch("/api/categories",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
   if(r.status===401){show("Non autorisé — reconnecte-toi.",false);return;}
+  if(r.status===403){show("Réservé aux administrateurs.",false);return;}
   if(r.ok){show("Catégorie créée ✓",true);document.getElementById("cName").value="";loadCategories();}
   else show("Erreur ("+r.status+")",false);
 }

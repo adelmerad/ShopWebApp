@@ -13,6 +13,7 @@ public static class AuthEndpoints
         var group = app.MapGroup("/auth");
 
         // ===== 1. Démarrer la connexion =====
+
         group.MapGet("/login", (HttpContext context, IConfiguration config) =>
         {
             var verifier = PkceService.GenerateCodeVerifier();
@@ -40,12 +41,14 @@ public static class AuthEndpoints
                       $"&scope={Uri.EscapeDataString(config["Sso:Scope"] ?? "openid profile email")}" +
                       $"&state={state}" +
                       $"&code_challenge={challenge}" +
-                      $"&code_challenge_method=S256";
+                      $"&code_challenge_method=S256" +
+                      $"&prompt=login";
 
             return Results.Redirect(url);
         });
 
         // ===== 2. Recevoir le code et l'échanger =====
+
         group.MapGet("/callback", async (
             HttpContext context,
             IConfiguration config,
@@ -88,7 +91,7 @@ public static class AuthEndpoints
             if (tokens is null)
                 return Results.BadRequest("Réponse invalide.");
 
-            // On lit l'identité dans l'id_token (pas de vérification de signature ici).
+
             var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokens.IdToken);
 
             var claims = new List<Claim>
@@ -98,6 +101,11 @@ public static class AuthEndpoints
                 new(ClaimTypes.Name, jwt.Claims.FirstOrDefault(c => c.Type == "name")?.Value ?? ""),
                 new("access_token", tokens.AccessToken)
             };
+
+            // Les roles emis par ShopAuth (claim "role" dans l'id_token) deviennent des
+            // ClaimTypes.Role ici, pour que .RequireAuthorization(policy => policy.RequireRole(...)) marche.
+            foreach (var role in jwt.Claims.Where(c => c.Type == "role"))
+                claims.Add(new Claim(ClaimTypes.Role, role.Value));
 
             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
 
@@ -121,7 +129,8 @@ public static class AuthEndpoints
             {
                 id = user.FindFirstValue(ClaimTypes.NameIdentifier),
                 email = user.FindFirstValue(ClaimTypes.Email),
-                name = user.FindFirstValue(ClaimTypes.Name)
+                name = user.FindFirstValue(ClaimTypes.Name),
+                roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value)
             });
         });
 

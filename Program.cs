@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using ShopWebApp.Data;
@@ -6,9 +7,8 @@ using ShopWebApp.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- Authentification : cookie simple, échange OIDC fait à la main (AuthEndpoints.cs) ---
-// Même méthode que ClientApi (le BFF du binôme) : PKCE manuel, pas de middleware
-// AddOpenIdConnect. Voir Endpoints/AuthEndpoints.cs pour le flow complet.
+// --- Authentification 
+
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -30,11 +30,17 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
     });
 
-builder.Services.AddAuthorization();
+static bool HasRole(ClaimsPrincipal user, params string[] roles) =>
+    user.Claims.Any(c => c.Type == ClaimTypes.Role &&
+        roles.Any(r => string.Equals(c.Value, r, StringComparison.OrdinalIgnoreCase)));
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("admin", policy => policy.RequireAssertion(ctx => HasRole(ctx.User, "admin")));
+    options.AddPolicy("admin-ou-employe", policy => policy.RequireAssertion(ctx => HasRole(ctx.User, "admin", "employe")));
+});
 builder.Services.AddHttpClient();
 
-// Produits/catégories fusionnés directement dans ShopWebApp (ShopApi retiré) :
-// même application pour tout, comme ClientApi chez le binôme.
 builder.Services.AddDbContext<ShopDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -43,12 +49,11 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Page front servie par le BFF (même origine -> pas de CORS, pas de token dans le navigateur)
 app.MapGet("/", () => Results.Content(Front.Html, "text/html"));
 
 app.MapAuthEndpoints();
 
-// ---------- Produits / catégories : accès direct à la base, plus de proxy vers une API séparée ----------
+// accès direct à la base
 app.MapGet("/api/categories", async (ShopDbContext db) =>
     await db.Categories.ToListAsync());
 
@@ -57,7 +62,7 @@ app.MapPost("/api/categories", async (Category category, ShopDbContext db) =>
     db.Categories.Add(category);
     await db.SaveChangesAsync();
     return Results.Created($"/api/categories/{category.Id}", category);
-}).RequireAuthorization();
+}).RequireAuthorization("admin");
 
 app.MapDelete("/api/categories/{id}", async (int id, ShopDbContext db) =>
 {
@@ -68,7 +73,7 @@ app.MapDelete("/api/categories/{id}", async (int id, ShopDbContext db) =>
     db.Categories.Remove(category);
     await db.SaveChangesAsync();
     return Results.NoContent();
-}).RequireAuthorization();
+}).RequireAuthorization("admin");
 
 app.MapGet("/api/products", async (ShopDbContext db) =>
     await db.Products.Include(p => p.Category).ToListAsync());
@@ -84,7 +89,7 @@ app.MapPost("/api/products", async (Product product, ShopDbContext db) =>
     db.Products.Add(product);
     await db.SaveChangesAsync();
     return Results.Created($"/api/products/{product.Id}", product);
-}).RequireAuthorization();
+}).RequireAuthorization("admin-ou-employe");
 
 app.MapPut("/api/products/{id}", async (int id, Product updated, ShopDbContext db) =>
 {
@@ -97,7 +102,7 @@ app.MapPut("/api/products/{id}", async (int id, Product updated, ShopDbContext d
     product.categoryId = updated.categoryId;
     await db.SaveChangesAsync();
     return Results.Ok(product);
-}).RequireAuthorization();
+}).RequireAuthorization("admin-ou-employe");
 
 app.MapDelete("/api/products/{id}", async (int id, ShopDbContext db) =>
 {
@@ -108,6 +113,6 @@ app.MapDelete("/api/products/{id}", async (int id, ShopDbContext db) =>
     db.Products.Remove(product);
     await db.SaveChangesAsync();
     return Results.NoContent();
-}).RequireAuthorization();
+}).RequireAuthorization("admin");
 
 app.Run();
