@@ -155,16 +155,20 @@ public static class AuthEndpoints
         });
 
         // ===== 3. Qui suis-je ? =====
-        group.MapGet("/me", (ClaimsPrincipal user) =>
+        group.MapGet("/me", (ClaimsPrincipal user, TokenStore tokenStore) =>
         {
             if (user.Identity?.IsAuthenticated != true)
                 return Results.Unauthorized();
+
+            var sessionId = user.FindFirstValue("session_id");
+            var tokenExpiresAt = sessionId is not null ? tokenStore.Get(sessionId)?.ExpiresAt : null;
 
             return Results.Ok(new
             {
                 id = user.FindFirstValue(ClaimTypes.NameIdentifier),
                 email = user.FindFirstValue(ClaimTypes.Email),
                 name = user.FindFirstValue(ClaimTypes.Name),
+                tokenExpiresAt,
                 roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value)
             });
         });

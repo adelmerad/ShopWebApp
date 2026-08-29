@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Protocols;
@@ -55,6 +56,7 @@ builder.Services.AddSingleton<IConfigurationManager<OpenIdConnectConfiguration>>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<TokenStore>();
+builder.Services.AddSingleton<TokenRefreshService>();
 
 builder.Services.AddDbContext<ShopDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -62,6 +64,32 @@ builder.Services.AddDbContext<ShopDbContext>(options =>
 var app = builder.Build();
 
 app.UseAuthentication();
+
+// Rafraichit l'access token de facon proactive avant qu'il expire, pour
+// chaque requete authentifiee. ReauthRequired = refresh token mort, on
+// deconnecte vraiment ; TransientFailure = souci reseau passager, on laisse
+// la requete continuer avec le token actuel plutot que de deconnecter
+// l'utilisateur pour un probleme temporaire.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var sessionId = context.User.FindFirstValue("session_id");
+        if (sessionId is not null)
+        {
+            var refreshService = context.RequestServices.GetRequiredService<TokenRefreshService>();
+            var outcome = await refreshService.EnsureValidAsync(sessionId);
+            if (outcome == TokenRefreshOutcome.ReauthRequired)
+            {
+                await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+        }
+    }
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Content(Front.Html, "text/html"));
