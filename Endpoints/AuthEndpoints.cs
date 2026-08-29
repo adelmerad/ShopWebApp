@@ -3,6 +3,9 @@ using System.Security.Claims;
 using ShopWebApp.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ShopWebApp.Endpoints;
 
@@ -53,6 +56,8 @@ public static class AuthEndpoints
             HttpContext context,
             IConfiguration config,
             IHttpClientFactory httpClientFactory,
+            IConfigurationManager<OpenIdConnectConfiguration> oidcConfig,
+            TokenStore tokenStore,
             string? code,
             string? state) =>
         {
@@ -91,20 +96,50 @@ public static class AuthEndpoints
             if (tokens is null)
                 return Results.BadRequest("Réponse invalide.");
 
+            // Validation reelle de l'id_token : signature (via les cles JWKS du SSO,
+            // recuperees et mises en cache automatiquement), issuer, audience et
+            // expiration. Avant, on lisait juste le contenu sans rien verifier.
+            var discovery = await oidcConfig.GetConfigurationAsync(context.RequestAborted);
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidIssuer = discovery.Issuer,
+                ValidAudience = config["Sso:ClientId"],
+                IssuerSigningKeys = discovery.SigningKeys,
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateIssuerSigningKey = true,
+                ValidateLifetime = true
+            };
 
-            var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokens.IdToken);
+            ClaimsPrincipal validated;
+            try
+            {
+                var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+                validated = handler.ValidateToken(tokens.IdToken, validationParameters, out _);
+            }
+            catch (SecurityTokenException ex)
+            {
+                return Results.BadRequest($"id_token invalide : {ex.Message}");
+            }
+
+            // Les vrais tokens restent cote serveur ; le cookie ne porte qu'un
+            // identifiant opaque (session_id) qui sert de cle pour les retrouver.
+            var sessionId = TokenStore.NewSessionId();
+            tokenStore.Set(sessionId,
+                new StoredTokens(tokens.AccessToken, tokens.RefreshToken, DateTimeOffset.UtcNow.AddSeconds(tokens.ExpiresIn)),
+                TimeSpan.FromHours(8));
 
             var claims = new List<Claim>
             {
-                new(ClaimTypes.NameIdentifier, jwt.Claims.First(c => c.Type == "sub").Value),
-                new(ClaimTypes.Email, jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value ?? ""),
-                new(ClaimTypes.Name, jwt.Claims.FirstOrDefault(c => c.Type == "name")?.Value ?? ""),
-                new("access_token", tokens.AccessToken)
+                new(ClaimTypes.NameIdentifier, validated.FindFirstValue("sub") ?? ""),
+                new(ClaimTypes.Email, validated.FindFirstValue("email") ?? ""),
+                new(ClaimTypes.Name, validated.FindFirstValue("name") ?? ""),
+                new("session_id", sessionId)
             };
 
             // Les roles emis par ShopAuth (claim "role" dans l'id_token) deviennent des
             // ClaimTypes.Role ici, pour que .RequireAuthorization(policy => policy.RequireRole(...)) marche.
-            foreach (var role in jwt.Claims.Where(c => c.Type == "role"))
+            foreach (var role in validated.FindAll("role"))
                 claims.Add(new Claim(ClaimTypes.Role, role.Value));
 
             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -134,8 +169,12 @@ public static class AuthEndpoints
             });
         });
 
-        group.MapPost("/logout", async (HttpContext context) =>
+        group.MapPost("/logout", async (HttpContext context, TokenStore tokenStore) =>
         {
+            var sessionId = context.User.FindFirstValue("session_id");
+            if (sessionId is not null)
+                tokenStore.Remove(sessionId);
+
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.Ok(new { message = "Déconnecté" });
         });

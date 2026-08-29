@@ -1,9 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using ShopWebApp.Data;
 using ShopWebApp.Endpoints;
 using ShopWebApp.Entities;
+using ShopWebApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +43,18 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("admin-ou-employe", policy => policy.RequireAssertion(ctx => HasRole(ctx.User, "admin", "employe")));
 });
 builder.Services.AddHttpClient();
+
+// Va chercher /.well-known/openid-configuration + les cles JWKS du SSO, avec
+// cache automatique - sert a verifier la signature reelle de l'id_token au
+// lieu de juste "faire confiance" au contenu decode.
+builder.Services.AddSingleton<IConfigurationManager<OpenIdConnectConfiguration>>(_ =>
+    new ConfigurationManager<OpenIdConnectConfiguration>(
+        $"{builder.Configuration["Sso:Authority"]}/.well-known/openid-configuration",
+        new OpenIdConnectConfigurationRetriever(),
+        new HttpDocumentRetriever { RequireHttps = false })); // http toleré en dev local uniquement
+
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<TokenStore>();
 
 builder.Services.AddDbContext<ShopDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
