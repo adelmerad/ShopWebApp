@@ -105,7 +105,7 @@ app.MapPost("/api/categories", async (Category category, ShopDbContext db) =>
     db.Categories.Add(category);
     await db.SaveChangesAsync();
     return Results.Created($"/api/categories/{category.Id}", category);
-}).RequireAuthorization("admin");
+}).RequireAuthorization("admin-ou-employe");
 
 app.MapDelete("/api/categories/{id}", async (int id, ShopDbContext db) =>
 {

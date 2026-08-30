@@ -85,7 +85,7 @@ static class Front
 function show(m,ok){const e=document.getElementById("msg");e.textContent=m;e.className="msg "+(ok?"ok":"ko");}
 
 function login(){location="/auth/login";}
-async function logout(){await fetch("/auth/logout",{method:"POST"});location.reload();}
+function logout(){location="/auth/logout";}
 
 let isAuthenticated=false;
 async function renderAuth(){

@@ -173,14 +173,26 @@ public static class AuthEndpoints
             });
         });
 
-        group.MapPost("/logout", async (HttpContext context, TokenStore tokenStore) =>
+        // GET (pas POST) : c'est une vraie navigation du navigateur, pas un
+        // fetch() - necessaire pour que la redirection en chaine vers
+        // /connect/logout puis vers ici fonctionne (un fetch() suit les
+        // redirections en silence, sans jamais faire naviguer le navigateur).
+        group.MapGet("/logout", async (HttpContext context, IConfiguration config, TokenStore tokenStore) =>
         {
             var sessionId = context.User.FindFirstValue("session_id");
             if (sessionId is not null)
                 tokenStore.Remove(sessionId);
 
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            return Results.Ok(new { message = "Déconnecté" });
+
+            // Deconnexion initiee par ShopWebApp -> ferme aussi la session sur
+            // ShopAuth (RP-initiated logout). Sans ca, ShopAuth resterait
+            // connecte et un autre client utilisant la meme session le resterait.
+            var url = $"{config["Sso:Authority"]}/connect/logout" +
+                      $"?client_id={Uri.EscapeDataString(config["Sso:ClientId"]!)}" +
+                      $"&post_logout_redirect_uri={Uri.EscapeDataString(config["Sso:RedirectUri"]!.Replace("/auth/callback", "/"))}";
+
+            return Results.Redirect(url);
         });
     }
 }
