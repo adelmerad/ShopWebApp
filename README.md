@@ -1,12 +1,16 @@
 # ShopWebApp
 
-Application web du projet SSO réalisé pendant mon stage chez Mobilis. Une seule application : elle gère la connexion **et** la logique métier (produits, catégories) — pas d'API séparée, comme `ClientApi` chez le binôme.
+Application web du projet SSO réalisé pendant mon stage chez Mobilis. Deux dossiers frères dans ce repo, comme chez le binôme (`ClientApi` + `sso-client`) :
+
+- **`ClientApi/`** — le BFF : connexion (OIDC) **et** logique métier (produits, catégories), plus le serveur de fichiers statiques pour le front.
+- **`sso-client/`** — le front (HTML/CSS/JS statique). Il ne gère aucun token : juste des `fetch()` vers `ClientApi`, qui envoie le cookie de session automatiquement.
 
 ## Rôle dans l'architecture
 
 ```
-Navigateur ──cookie──▶  ShopWebApp (:5200)  ──login OIDC──▶  ShopAuth (:5124)
+Navigateur ──cookie──▶  ClientApi (:5200)  ──sert──▶  sso-client (statique)
                               │
+                              ├──login OIDC──▶  ShopAuth (:5124)
                               └──▶  base de données ShopDb (produits, catégories)
 ```
 
@@ -41,13 +45,14 @@ Volontairement la **même méthode** que `ClientApi` (le BFF du binôme), pour �
 ## Installation
 
 ```powershell
+cd ClientApi
 dotnet restore
 Copy-Item appsettings.Example.json appsettings.json   # puis renseigner Sso + ConnectionStrings
 dotnet ef database update
 dotnet run
 ```
 
-Puis ouvrir **http://localhost:5200**.
+Puis ouvrir **http://localhost:5200** (ClientApi sert `sso-client/` directement, aucune étape de build côté front).
 
 ## Configuration (`appsettings.json`, non versionné)
 
@@ -70,7 +75,7 @@ Changer juste `Authority`/`ClientId`/`ClientSecret`/`RedirectUri` permet de basc
 
 | Méthode | Route | Rôle |
 |---|---|---|
-| GET | `/` | La page web (front) |
+| GET | `/`, `/style.css`, `/app.js` | Fichiers statiques de `sso-client/` |
 | GET | `/auth/login` | Démarre la connexion (PKCE manuel) |
 | GET | `/auth/callback` | Reçoit le `code`, échange contre les tokens |
 | GET | `/auth/me` | Infos de l'utilisateur connecté (200 / 401) |

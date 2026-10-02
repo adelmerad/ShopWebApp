@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boutique — BFF</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div><h1>🛍️ Boutique</h1><div class="sub">Navigateur → <b>cookie</b> → ClientApi (auth + données)</div></div>
+  <div class="auth" id="authArea"></div>
+</header>
+<main>
+  <div class="card">
+    <h2>Produits</h2>
+    <table>
+      <thead><tr><th>Id</th><th>Nom</th><th>Prix</th><th>Catégorie</th><th></th></tr></thead>
+      <tbody id="productsBody"><tr><td colspan="5" class="locked">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Catégories</h2>
+    <table>
+      <thead><tr><th>Id</th><th>Nom</th><th></th></tr></thead>
+      <tbody id="categoriesBody"><tr><td colspan="3" class="locked">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Ajouter <span class="badge">🔒 connexion requise</span></h2>
+    <div id="addLocked" class="locked">Connecte-toi pour ajouter un produit ou une catégorie.</div>
+    <div id="addForm" style="display:none;">
+      <div class="row">
+        <div class="field"><label>Nom du produit</label><input id="pName" placeholder="nom de produit"></div>
+        <div class="field"><label>Prix (€)</label><input id="pPrice" type="number" step="0.01" placeholder="49.90"></div>
+        <div class="field"><label>Catégorie</label><select id="pCat"></select></div>
+        <div class="field" style="flex:0;"><label>&nbsp;</label><button id="saveBtn" onclick="addProduct()">Ajouter</button></div>
+        <div class="field" id="cancelField" style="flex:0;display:none;"><label>&nbsp;</label><button class="ghost" onclick="cancelEdit()">Annuler</button></div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <div class="field"><label>Nouvelle catégorie</label><input id="cName" placeholder="Informatique"></div>
+        <div class="field" style="flex:0;"><label>&nbsp;</label><button class="ghost" onclick="addCategory()">Créer</button></div>
+      </div>
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

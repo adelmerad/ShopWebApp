@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using ShopWebApp.Data;
@@ -92,7 +93,15 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
-app.MapGet("/", () => Results.Content(Front.Html, "text/html"));
+// Le front (sso-client) est un dossier frere, pas encore un projet a part
+// avec son propre build : fichiers statiques simples, servis directement par
+// ClientApi. Le BFF reste intact - le navigateur n'a toujours qu'un cookie,
+// jamais de token, meme si HTML/CSS/JS vivent maintenant dans leurs propres
+// fichiers au lieu d'une chaine C# plutot que des tokens geres en JS.
+var clientRoot = Path.Combine(builder.Environment.ContentRootPath, "..", "sso-client");
+var clientFileProvider = new PhysicalFileProvider(clientRoot);
+app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = clientFileProvider });
+app.UseStaticFiles(new StaticFileOptions { FileProvider = clientFileProvider });
 
 app.MapAuthEndpoints();
 
