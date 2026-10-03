@@ -1,80 +1,96 @@
 # ShopWebApp
 
-![.NET](https://img.shields.io/badge/ASP.NET_Core-8-512BD4?logo=dotnet&logoColor=white)
-![OpenID Connect](https://img.shields.io/badge/OpenID_Connect-PKCE-F78C40?logo=openid&logoColor=white)
-![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)
+Application web du projet SSO réalisé pendant mon stage chez Mobilis. Deux dossiers frères dans ce repo, comme chez le binôme (`ClientApi` + `sso-client`) :
 
-The web application of an SSO project built during my internship at Mobilis. It follows the **Backend-for-Frontend (BFF)** pattern: the browser only holds a session cookie and never sees a token. Users sign in through [ShopAuth](https://github.com/adelmerad/ShopAuth), the OAuth2 / OpenID Connect server.
+- **`ClientApi/`** — le BFF : connexion (OIDC) **et** logique métier (produits, catégories), plus le serveur de fichiers statiques pour le front.
+- **`sso-client/`** — le front (HTML/CSS/JS statique). Il ne gère aucun token : juste des `fetch()` vers `ClientApi`, qui envoie le cookie de session automatiquement.
 
-- **`ClientApi/`** — the BFF: sign-in, session and token handling, the product and category API, and static file hosting for the frontend
-- **`sso-client/`** — the frontend, in plain HTML, CSS and JavaScript. It handles no tokens and only makes `fetch()` calls to `ClientApi`
-
-The interface is in French.
-
-## 🏗️ Architecture
+## Rôle dans l'architecture
 
 ```
-Browser ──session cookie──▶ ClientApi (:5200) ──serves──▶ sso-client (static files)
-                                 │
-                                 ├──OIDC sign-in, token refresh──▶ ShopAuth (:5124)
-                                 └──Entity Framework Core──▶ ShopDb (SQL Server)
+Navigateur ──cookie──▶  ClientApi (:5200)  ──sert──▶  sso-client (statique)
+                              │
+                              ├──login OIDC──▶  ShopAuth (:5124)
+                              └──▶  base de données ShopDb (produits, catégories)
 ```
 
-## ✨ Features
+- **Navigateur ↔ ShopWebApp** : cookie de session **HttpOnly**. Le navigateur ne voit jamais de token.
+- **ShopWebApp ↔ ShopAuth** : login OpenID Connect (Authorization Code + PKCE), fait à la main.
+- **ShopWebApp ↔ base de données** : accès direct via Entity Framework Core — plus de serveur de ressources séparé.
 
-- **Hand-written OIDC flow:** Authorization Code with PKCE (S256) and `state`, without the `AddOpenIdConnect` middleware
-- **Real `id_token` validation:** signature checked against the server's JWKS keys, plus issuer, audience and expiry
-- **Tokens stay on the server:** the HttpOnly cookie only carries an opaque session id
-- **Proactive token refresh:** the access token is renewed before it expires, with a per-session lock because refresh tokens are rotated
-- **Resilient sessions:** a dead refresh token ends the session, while a temporary network or SSO failure doesn't sign the user out
-- **Role-based access:** `admin` and `admin-ou-employe` policies from the `role` claims issued by ShopAuth
-- **Single logout:** signing out also closes the session on ShopAuth (RP-initiated logout)
+## Stack
 
-## 🔐 Sign-In Flow
+- ASP.NET Core (Minimal API)
+- Authentification **par cookie**, échange OIDC codé à la main (pas de middleware `AddOpenIdConnect`)
+- Entity Framework Core — Code-First + Migrations
+- SQL Server (Docker)
 
-1. `GET /auth/login` generates `code_verifier`, `code_challenge` and `state`, stores them in short-lived HttpOnly cookies, and redirects to `{Sso:Authority}/connect/authorize`
-2. `GET /auth/callback` checks `state`, exchanges the code for tokens, validates the `id_token`, stores the tokens on the server, and sets the session cookie
-3. On each authenticated request, a middleware refreshes the access token if it expires within 60 seconds
-4. `GET /auth/logout` removes the session, then redirects to `{Sso:Authority}/connect/logout`
+## Comment ça marche — PKCE manuel
 
-## 🔌 Endpoints
+Volontairement la **même méthode** que `ClientApi` (le BFF du binôme), pour éviter les erreurs de connexion croisée dues à des implémentations différentes :
 
-| Method | Route | Access |
-|--------|-------|--------|
-| GET | `/`, `/style.css`, `/app.js` | Public |
-| GET | `/auth/login`, `/auth/callback` | Public |
-| GET | `/auth/me` | Signed in (401 otherwise) |
-| GET | `/auth/logout` | Public |
-| GET | `/api/products`, `/api/products/{id}`, `/api/categories` | Public |
-| POST | `/api/products`, `/api/categories` | `admin` or `employe` role |
-| PUT | `/api/products/{id}` | `admin` or `employe` role |
-| DELETE | `/api/products/{id}`, `/api/categories/{id}` | `admin` role |
+1. `GET /auth/login` : génère `code_verifier`/`code_challenge`/`state` à la main (`Services/PkceService.cs`), les stocke dans des cookies courts, redirige vers `{Sso:Authority}/connect/authorize`.
+2. `GET /auth/callback` : vérifie le `state`, échange le `code` contre les tokens (`client_id` + `client_secret` + `code_verifier`), lit l'`id_token` (**sans vérifier sa signature** — `Services/AuthEndpoints.cs`), pose le cookie de session avec le token stocké comme claim.
+3. `GET /auth/me` : infos de l'utilisateur connecté.
+4. `POST /auth/logout` : ferme la session.
 
-## 🚀 Getting Started
+⚠️ **Limites assumées** (copiées de `ClientApi` à l'identique) : pas de vérification de signature du token, pas de refresh token utilisé — acceptable pour ce projet d'apprentissage, à corriger avant toute mise en prod.
 
-Requirements:
+## Prérequis
 
-- .NET 8 SDK
-- SQL Server with a `ShopDb` database
-- [ShopAuth](https://github.com/adelmerad/ShopAuth) running on `http://localhost:5124`, with a client that allows the redirect `http://localhost:5200/auth/callback`
+- **ShopAuth** lancé sur `http://localhost:5124` (profil **http**) — ou le serveur SSO du binôme
+- SQL Server accessible, base `ShopDb`
+- Le client OpenIddict utilisé doit autoriser le redirect `http://localhost:5200/auth/callback`
+
+## Installation
 
 ```powershell
 cd ClientApi
 dotnet restore
-Copy-Item appsettings.Example.json appsettings.json   # then fill in Sso and ConnectionStrings
+Copy-Item appsettings.Example.json appsettings.json   # puis renseigner Sso + ConnectionStrings
 dotnet ef database update
 dotnet run
 ```
 
-Then open http://localhost:5200. The frontend needs no build step.
+Puis ouvrir **http://localhost:5200** (ClientApi sert `sso-client/` directement, aucune étape de build côté front).
 
-Changing `Authority`, `ClientId`, `ClientSecret` and `RedirectUri` in `appsettings.json` is enough to switch to another SSO server.
+## Configuration (`appsettings.json`, non versionné)
 
-## ⚠️ Notes
+```json
+{
+  "ConnectionStrings": { "DefaultConnection": "..." },
+  "Sso": {
+    "Authority": "http://localhost:5124",
+    "ClientId": "shopwebapp-bff",
+    "ClientSecret": "...",
+    "RedirectUri": "http://localhost:5200/auth/callback",
+    "Scope": "openid email profile offline_access"
+  }
+}
+```
 
-- Tokens are held in server memory, so sessions are lost when the app restarts. Running several instances would need a shared store
-- OIDC metadata over HTTP is allowed for local development only and must use HTTPS in production
+Changer juste `Authority`/`ClientId`/`ClientSecret`/`RedirectUri` permet de basculer entre ton propre `ShopAuth` et un serveur SSO tiers, sans toucher au code.
 
-## 👤 Author
+## Endpoints
 
-**Adel Merad** — [GitHub](https://github.com/adelmerad)
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/`, `/style.css`, `/app.js` | Fichiers statiques de `sso-client/` |
+| GET | `/auth/login` | Démarre la connexion (PKCE manuel) |
+| GET | `/auth/callback` | Reçoit le `code`, échange contre les tokens |
+| GET | `/auth/me` | Infos de l'utilisateur connecté (200 / 401) |
+| POST | `/auth/logout` | Ferme la session |
+| GET | `/api/products`, `/api/categories` | Lecture (public) |
+| POST/PUT/DELETE | `/api/products`, `/api/categories` | Écriture (**connexion requise**) |
+
+## Sécurité
+
+- Cookie **HttpOnly** + `SameSite=Lax`.
+- PKCE (méthode S256) sur l'échange de code.
+- `[Authorize]`/`.RequireAuthorization()` sur les endpoints d'écriture.
+
+## Notes dev
+
+- Session en cookie (claims), pas de stockage serveur séparé → perdue si le cookie expire (8h) ou si l'utilisateur se déconnecte.
+- Métadonnées OIDC en **HTTP** pour le dev local.
+- `ShopApi` (l'ancienne API séparée) a été retirée le 2026-08-21 et fusionnée ici.
