@@ -1,6 +1,6 @@
 # ShopWebApp
 
-Application web du projet SSO réalisé par Adel Merad et Abdelhadi Deffous pendant leur stage chez Mobilis. Elle se connecte au serveur SSO commun du projet : [ShopAuth](https://github.com/adelmerad/ShopAuth).
+Application web du projet SSO réalisé par Adel Merad et Abdelhadi Deffous pendant leur stage chez Mobilis. Elle se connecte au serveur SSO commun du projet : ShopAuth.
 
 Deux dossiers frères dans ce repo :
 
@@ -53,7 +53,7 @@ Un rôle modifié sur le SSO n'est pris en compte qu'à la connexion suivante, c
 ## Prérequis
 
 - [SDK .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0)
-- **[ShopAuth](https://github.com/adelmerad/ShopAuth)** lancé sur `http://localhost:5171` (profil **http**)
+- **ShopAuth** lancé sur `http://localhost:5171` (profil **http**)
 - SQL Server accessible, base `ShopDb`
 
 ## Enregistrer l'application sur le SSO
