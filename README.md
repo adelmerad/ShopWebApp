@@ -1,6 +1,8 @@
 # ShopWebApp
 
-Application web du projet SSO réalisé pendant mon stage chez Mobilis. Deux dossiers frères dans ce repo :
+Application web du projet SSO réalisé par Adel Merad et Abdelhadi Deffous pendant leur stage chez Mobilis. Elle se connecte au serveur SSO commun du projet : [ShopAuth](https://github.com/adelmerad/ShopAuth).
+
+Deux dossiers frères dans ce repo :
 
 - **`ClientApi/`** — le BFF : connexion (OIDC) **et** logique métier (produits, catégories), plus le serveur de fichiers statiques pour le front.
 - **`sso-client/`** — le front (HTML/CSS/JS statique). Il ne gère aucun token : juste des `fetch()` vers `ClientApi`, qui envoie le cookie de session automatiquement.
@@ -10,7 +12,7 @@ Application web du projet SSO réalisé pendant mon stage chez Mobilis. Deux dos
 ```
 Navigateur ──cookie──▶  ClientApi (:5200)  ──sert──▶  sso-client (statique)
                               │
-                              ├──OIDC + refresh──▶  ShopAuth (:5124)
+                              ├──OIDC + refresh──▶  ShopAuth (:5171)
                               └──▶  base de données ShopDb (produits, catégories)
 ```
 
@@ -41,20 +43,27 @@ Les rôles viennent du claim `role` de l'`id_token`, émis par le SSO. ShopWebAp
 
 | Politique | Rôles acceptés | Utilisée pour |
 |---|---|---|
-| `admin-ou-employe` | `admin`, `employe` | Créer une catégorie, créer ou modifier un produit |
-| `admin` | `admin` | Supprimer une catégorie ou un produit |
+| `admin-ou-employe` | `Admin`, `employe` | Créer une catégorie, créer ou modifier un produit |
+| `admin` | `Admin` | Supprimer une catégorie ou un produit |
+
+Sur le SSO, `Admin` est un rôle global et `employe` un rôle lié à l'application `shopwebapp-bff`. Les noms sont comparés sans tenir compte de la casse. Un compte sans aucun rôle sur cette application est refusé par le SSO à la connexion.
 
 Un rôle modifié sur le SSO n'est pris en compte qu'à la connexion suivante, car les rôles sont copiés dans le cookie à la connexion.
 
 ## Prérequis
 
 - [SDK .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0)
-- **ShopAuth** lancé sur `http://localhost:5124` (profil **http**) — ou un autre serveur SSO compatible
+- **[ShopAuth](https://github.com/adelmerad/ShopAuth)** lancé sur `http://localhost:5171` (profil **http**)
 - SQL Server accessible, base `ShopDb`
-- Le client OpenIddict utilisé doit autoriser :
-  - le redirect `http://localhost:5200/auth/callback` ;
-  - le post-logout redirect `http://localhost:5200/` ;
-  - le scope `offline_access`, nécessaire pour obtenir un refresh token.
+
+## Enregistrer l'application sur le SSO
+
+À faire une seule fois, dans le panneau d'administration de ShopAuth :
+
+1. Créer une application confidentielle `shopwebapp-bff`, et noter le secret affiché (il n'est visible qu'à la création).
+2. Autoriser le redirect `http://localhost:5200/auth/callback` et le post-logout redirect `http://localhost:5200/`.
+3. Autoriser les scopes `profile`, `email`, `roles` et `offline_access` (nécessaire pour obtenir un refresh token).
+4. Créer le rôle `employe` pour cette application et l'attribuer aux comptes concernés.
 
 ## Installation
 
@@ -74,7 +83,7 @@ Puis ouvrir **http://localhost:5200** (ClientApi sert `sso-client/` directement,
 {
   "ConnectionStrings": { "DefaultConnection": "..." },
   "Sso": {
-    "Authority": "http://localhost:5124",
+    "Authority": "http://localhost:5171",
     "ClientId": "shopwebapp-bff",
     "ClientSecret": "...",
     "RedirectUri": "http://localhost:5200/auth/callback",
@@ -110,6 +119,5 @@ Changer juste `Authority`/`ClientId`/`ClientSecret`/`RedirectUri` permet de basc
 ## Notes dev
 
 - `TokenStore` garde les tokens en mémoire : redémarrer ShopWebApp ferme les sessions en cours (8h maximum sinon).
-- Clés JWKS en cache, et clés de ShopAuth régénérées à chaque démarrage : après un redémarrage de ShopAuth, redémarrer aussi ShopWebApp.
 - Métadonnées OIDC en **HTTP** pour le dev local (`RequireHttps = false`), à passer en HTTPS avant toute mise en prod.
 - `ShopApi` (l'ancienne API séparée) a été retirée le 2026-08-21 et fusionnée ici.
